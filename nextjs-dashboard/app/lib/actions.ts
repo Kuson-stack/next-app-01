@@ -6,6 +6,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
+import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcrypt';
 
 const FormSchema = z.object({
   id: z.string(),
@@ -138,3 +140,57 @@ export async function authenticate(
     throw error;
   }
 }
+
+export async function register(
+  prevState: string | null,
+  formData: FormData,
+) {
+
+  const validatedFields = RegisterUser.safeParse({
+    name: formData.get('name'),
+    email: formData.get('email'),
+    password: formData.get('password'),
+    confirmPassword: formData.get('confirm-password'),
+  })
+
+  // If form validation fails, return errors early. Otherwise, continue.
+  if (!validatedFields.success) {
+    return "Missing Fields. Failed to Create Account."
+  }
+
+  const { name, email, password, confirmPassword } = validatedFields.data
+
+  // Check if passwords match
+  if (password !== confirmPassword) {
+    return "Passwords don't match."
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10)
+  const id = uuidv4()
+
+  try {
+    await sql`
+      INSERT INTO users (id, name, email, password)
+      VALUES (${id}, ${name}, ${email}, ${hashedPassword})
+    `
+  } catch (error) {
+    return "Database Error: Failed to Create Account."
+  }
+
+  redirect('/login')
+}
+
+const RegisterUser = z.object({
+  name: z.string({
+    invalid_type_error: 'Please enter your name.',
+  }),
+  email: z.string({
+    invalid_type_error: 'Please enter an email address.',
+  }),
+  password: z.string({
+    invalid_type_error: 'Please enter a password.',
+  }),
+  confirmPassword: z.string({
+    invalid_type_error: 'Please confirm your password.',
+  }),
+})
